@@ -20,18 +20,21 @@ def read_graph(filename):
 
 def lambda_connection(graph, source, target, lambda_=5):
     # using shortest path weight as quality function
-    weight, path = nx.single_source_dijkstra(graph, source, target, cutoff=lambda_)
+    try:
+        weight, path = nx.single_source_dijkstra(graph, source, target, cutoff=lambda_)
+    except:
+        return 0
     edge_weights = nx.get_edge_attributes(graph, 'weight')
-    print(weight, path)
     return 1/weight if weight != 0 else 0
 
 
 def lambda_distance(graph1, graph2):
     # both graphs have to have the same vertex set
-    assert fst_graph.nodes == snd_graph.nodes
+    # note: order in NodeView may be different
+    assert set(graph1.nodes) == set(graph2.nodes)
 
     total = 0
-    for source, target in zip(graph1.nodes, graph2.nodes):
+    for s, t in zip(graph1.nodes, graph2.nodes):
         total += (lambda_connection(graph1, s, t) - lambda_connection(graph2, s, t))**2
 
     return math.sqrt(total)
@@ -45,7 +48,7 @@ def decompress(compressed_graph):
     # recreate original node set in 'graph'
     node_to_supernode = {}
     for supernode in compressed_graph.nodes:
-        nodes = compresed_graph.nodes.data()[supernode]['contains']
+        nodes = compressed_graph.nodes.data()[supernode]['contains']
         graph.remove_node(supernode)
         for node in nodes:
             graph.add_node(node, contains=set([node]))
@@ -53,10 +56,13 @@ def decompress(compressed_graph):
 
     # add edges in G corresponding to superedges in S
     for source, target in compressed_graph.edges:
+        contains = nx.get_node_attributes(compressed_graph, 'contains')
         superweight = compressed_graph[source][target]['weight']
-        for s in compressed_graph[source]['contains']:
-            for t in compressed_graph[target]['contains']:
+        for s in contains[source]:
+            for t in contains[target]:
                 graph.add_edge(s, t, weight=superweight)
+
+    return graph
 
 
 def graph_merge(graph, source, target):
@@ -85,9 +91,6 @@ def graph_merge(graph, source, target):
         num =  len(contains[source]) * lambda_connection(graph, source, node)
         num += len(contains[target]) * lambda_connection(graph, target, node)
         denom = len(contains[source]) + len(contains[target])
-        print(graph.nodes)
-        print(new_graph.nodes)
-        print(supernode, node)
         new_graph.add_edge(supernode, node, weight=num/denom)
 
     # update w'({z, z})
@@ -105,13 +108,13 @@ def init_compressed_graph(graph):
     return new_graph
 
 
-def calc_compression_ratio(graph, compressed_graph):
-    return compressed_graph.number_of_edges / graph.number_of_edges
+def calc_cr(graph, compressed_graph):
+    return compressed_graph.number_of_edges() / graph.number_of_edges()
 
 
-def brute_force_greedy(graph, cr=0.1):
+def brute_force_greedy(graph, cr=0.9):
     compressed_graph = init_compressed_graph(graph)
-    while calc_cr(graph, compressed_graph) < cr:
+    while calc_cr(graph, compressed_graph) > cr:
         min_source, min_target = 0, 0
         min_distance = float('inf')
         for source, target in combinations(compressed_graph.nodes, 2):
@@ -119,12 +122,13 @@ def brute_force_greedy(graph, cr=0.1):
             if distance < min_distance:
                 min_source = source
                 min_target = target
-        compressed_graph = merge(compressed_graph, source, target)
+        compressed_graph = graph_merge(compressed_graph, source, target)
 
     return compressed_graph
 
 if __name__ == '__main__':
     g =  read_graph('test_data.txt')
     for timestamp, graph in g.items():
-        g1 = init_compressed_graph(graph)
-        graph_merge(g1, '0', '1')
+        compressed = brute_force_greedy(graph)
+        for node in compressed:
+            print(node)
