@@ -146,7 +146,7 @@ def brute_force_greedy(graph, cr=0.90):
 
 if __name__ == '__main__':
     filename = sys.argv[1].strip()
-    compressed_g = []
+    compressed_g = {}
     g =  read_graph(filename)
     for timestamp, graph in g.items():
         print('timestamp', timestamp)
@@ -154,6 +154,6 @@ if __name__ == '__main__':
         for node in compressed:
             print(node)
 
-        compressed_g.append(compressed)
+        compressed_g[timestamp] = compressed
         with open('{}_compressed.pkl'.format(filename), 'wb') as f:
             pickle.dump(compressed_g, f)
