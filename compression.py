@@ -2,6 +2,8 @@
 
 import math
 import networkx as nx
+import pickle
+import sys
 
 from collections import defaultdict
 from itertools import combinations
@@ -9,10 +11,10 @@ from itertools import combinations
 # TODO: unit tests
 
 def read_graph(filename):
-    g = defaultdict(lambda: nx.Graph())
+    g = defaultdict(lambda: nx.DiGraph())
     with open(filename, 'r') as f:
         for line in f:
-            timestamp, source, target, weight = line.split()
+            source, target, weight, timestamp = line.split()
             g[timestamp].add_edge(source, target, weight=int(weight))
 
     return g
@@ -41,7 +43,6 @@ def lambda_distance(graph1, graph2):
 
 
 def decompress(compressed_graph):
-    # TODO: implement
     # there's an edge between two nodes exactly when theres a superedge between corr supernodes
     # weight of an edge is the weight of the corresponding supernode
     graph = compressed_graph.copy()
@@ -109,26 +110,50 @@ def init_compressed_graph(graph):
 
 
 def calc_cr(graph, compressed_graph):
-    return compressed_graph.number_of_edges() / graph.number_of_edges()
+    return compressed_graph.number_of_nodes() / graph.number_of_nodes()
 
 
-def brute_force_greedy(graph, cr=0.9):
+def all_two_hop_pairs(g):
+    seen = set()
+    for source in g.nodes:
+        for intermediate in g.neighbors(source):
+            for target in g.neighbors(intermediate):
+                if source == target or (source, target) in seen:
+                    continue
+                seen.add((source, target))
+                yield source, target
+
+
+
+def brute_force_greedy(graph, cr=0.90):
     compressed_graph = init_compressed_graph(graph)
     while calc_cr(graph, compressed_graph) > cr:
-        min_source, min_target = 0, 0
+        print(calc_cr(graph, compressed_graph))
+        min_source, min_target = -1, -1
         min_distance = float('inf')
-        for source, target in combinations(compressed_graph.nodes, 2):
+        for i, (source, target) in enumerate(all_two_hop_pairs(compressed_graph)):
             distance = lambda_distance(graph, decompress(compressed_graph))
             if distance < min_distance:
                 min_source = source
                 min_target = target
-        compressed_graph = graph_merge(compressed_graph, source, target)
+        if min_source == -1 and min_target == -1:
+            print('couldnt compress any more')
+            return compressed_graph
+        compressed_graph = graph_merge(compressed_graph, min_source, min_target)
 
     return compressed_graph
 
+
 if __name__ == '__main__':
-    g =  read_graph('test_data.txt')
+    filename = sys.argv[1].strip()
+    compressed_g = []
+    g =  read_graph(filename)
     for timestamp, graph in g.items():
+        print('timestamp', timestamp)
         compressed = brute_force_greedy(graph)
         for node in compressed:
             print(node)
+
+        compressed_g.append(compressed)
+        with open('{}_compressed.pkl'.format(filename), 'wb') as f:
+            pickle.dump(compressed_g, f)
