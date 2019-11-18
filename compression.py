@@ -19,9 +19,8 @@ def usage(code):
     exit(code)
 
 
-def make_all_dirs():
-    dirs = ['pkl_files']
-    for d in dirs:
+def make_all_dirs(dir_list):
+    for d in dir_list:
         if not os.path.isdir('./' + d):
             os.mkdir('./' + d)
 
@@ -170,7 +169,7 @@ if __name__ == '__main__':
         usage(1)
 
     filename = sys.argv[1].strip()
-    make_all_dirs()
+    make_all_dirs(['pkl_files'])
 
     compressed_g = {}
     g =  read_graph(filename)
