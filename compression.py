@@ -183,5 +183,7 @@ if __name__ == '__main__':
         print()
 
         compressed_g[timestamp] = compressed
-        with open('./pkl_files/{}_compressed.pkl'.format(filename), 'wb') as f:
+
+        prefix = filename.split('/')[-1].split('.')[0]
+        with open('./pkl_files/{}_compressed.pkl'.format(prefix), 'wb') as f:
             pickle.dump(compressed_g, f)
