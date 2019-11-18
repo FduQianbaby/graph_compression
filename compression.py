@@ -4,11 +4,27 @@ import math
 import networkx as nx
 import pickle
 import sys
+import os
+
+import matplotlib.pyplot as plt
 
 from collections import defaultdict
 from itertools import combinations
 
-# TODO: unit tests
+PAGERANK_MEMO = {}
+
+
+def usage(code):
+    print("Usage: compression.py [filename]")
+    exit(code)
+
+
+def make_all_dirs():
+    dirs = ['pkl_files']
+    for d in dirs:
+        if not os.path.isdir('./' + d):
+            os.mkdir('./' + d)
+
 
 def read_graph(filename):
     g = defaultdict(lambda: nx.DiGraph())
@@ -21,13 +37,13 @@ def read_graph(filename):
 
 
 def lambda_connection(graph, source, target, lambda_=5):
-    # using shortest path weight as quality function
-    try:
-        weight, path = nx.single_source_dijkstra(graph, source, target, cutoff=lambda_)
-    except:
-        return 0
-    edge_weights = nx.get_edge_attributes(graph, 'weight')
-    return 1/weight if weight != 0 else 0
+    # RWR
+    if graph in PAGERANK_MEMO:
+        return PAGERANK_MEMO[graph][target]
+
+    weights = nx.pagerank(graph, personalization={source: 1})
+    PAGERANK_MEMO[graph] = weights
+    return weights[target]
 
 
 def lambda_distance(graph1, graph2):
@@ -66,6 +82,10 @@ def decompress(compressed_graph):
     return graph
 
 
+def is_edge(g, tup):
+    return tup in g.edges
+
+
 def graph_merge(graph, source, target):
     contains = nx.get_node_attributes(graph, 'contains')
 
@@ -87,7 +107,7 @@ def graph_merge(graph, source, target):
 
     # update weighted edges accordingly
     for node in graph.nodes:
-        if node in (source, target):
+        if node in (source, target) or not is_edge(graph, (source, node)) and not is_edge(graph, (node, target)):
             continue
         num =  len(contains[source]) * lambda_connection(graph, source, node)
         num += len(contains[target]) * lambda_connection(graph, target, node)
@@ -124,11 +144,10 @@ def all_two_hop_pairs(g):
                 yield source, target
 
 
-
-def brute_force_greedy(graph, cr=0.90):
+def brute_force_greedy(graph, cr=0.75):
     compressed_graph = init_compressed_graph(graph)
     while calc_cr(graph, compressed_graph) > cr:
-        print(calc_cr(graph, compressed_graph))
+        print('  current cr: ', calc_cr(graph, compressed_graph))
         min_source, min_target = -1, -1
         min_distance = float('inf')
         for i, (source, target) in enumerate(all_two_hop_pairs(compressed_graph)):
@@ -136,8 +155,9 @@ def brute_force_greedy(graph, cr=0.90):
             if distance < min_distance:
                 min_source = source
                 min_target = target
+                min_distance = distance
         if min_source == -1 and min_target == -1:
-            print('couldnt compress any more')
+            print('  nothing to compress')
             return compressed_graph
         compressed_graph = graph_merge(compressed_graph, min_source, min_target)
 
@@ -145,15 +165,24 @@ def brute_force_greedy(graph, cr=0.90):
 
 
 if __name__ == '__main__':
+    # argument parsing
+    if len(sys.argv) != 2:
+        usage(1)
+
     filename = sys.argv[1].strip()
+    make_all_dirs()
+
     compressed_g = {}
     g =  read_graph(filename)
     for timestamp, graph in g.items():
         print('timestamp', timestamp)
         compressed = brute_force_greedy(graph)
+        print('  final cr  : ', calc_cr(graph, compressed))
+        print('  nodes:')
         for node in compressed:
             print(node)
+        print()
 
         compressed_g[timestamp] = compressed
-        with open('{}_compressed.pkl'.format(filename), 'wb') as f:
+        with open('./pkl_files/{}_compressed.pkl'.format(filename), 'wb') as f:
             pickle.dump(compressed_g, f)
