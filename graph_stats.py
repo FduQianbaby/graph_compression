@@ -2,6 +2,7 @@
 
 import math
 import matplotlib.pyplot as plt
+import networkx as nx
 import numpy
 import pickle
 import sys
@@ -19,11 +20,13 @@ def L1norm(vector):
 
 def log(lst):
     # dont want generator, b/c matplotlib can't handle it
-    return list([math.log10(x) if x != 0 for x in lst])
+    return list([math.log10(x) if x != 0 else 0 for x in lst])
 
 
 def plot(g, stats):
     for label, stat in stats.items():
+        if label == 'timestamps':
+            continue
         plt.plot(stats['timestamps'], stat, label=label)
 
     plt.legend()
@@ -54,8 +57,8 @@ def calc_stats(g, take_log=True):
         curr_len = last_eig.shape[0]
         curr_eig = vectors[:,1]
 
-        curr_eig = pad_vector(curr_eig, curr_len - new_len]) if curr_len > new_len else curr_eig
-        last_eig = pad_vector(last_eig, new_len - curr_len]) if new_len > curr_len else last_eig
+        curr_eig = pad_vector(curr_eig, curr_len - new_len) if curr_len > new_len else curr_eig
+        last_eig = pad_vector(last_eig, new_len - curr_len) if new_len > curr_len else last_eig
 
         change_vec = numpy.subtract(curr_eig, last_eig)
         stats['L1 norm of first eigenvector'].append(L1norm(change_vec))
@@ -63,10 +66,10 @@ def calc_stats(g, take_log=True):
         last_eig = vectors[:, 1]
 
     if take_log:
-        num_edges = log(num_edges)
-        num_nodes = log(num_nodes)
-        l1_change = log(l1_change)
-        l2_change = log(l2_change)
+        stats['number of edges'] = log(stats['number of edges'])
+        stats['number of nodes'] = log(stats['number of nodes'])
+        stats['L1 norm of first eigenvector'] = log(stats['L1 norm of first eigenvector'])
+        stats['L2 norm of first eigenvector'] = log(stats['L2 norm of first eigenvector'])
 
     return stats
 
