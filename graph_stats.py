@@ -6,9 +6,15 @@ import networkx as nx
 import numpy
 import pickle
 import sys
+from compression import make_all_dirs
 
 
 STATS = ['number of edges', 'number of nodes', 'L1 norm of first eigenvector', 'L2 norm of first eigenvector']
+
+
+def usage(code):
+    print('Usage: graph_stats.py [filename]')
+    exit(code)
 
 def L1norm(vector):
     total = 0
@@ -23,7 +29,7 @@ def log(lst):
     return list([math.log10(x) if x != 0 else 0 for x in lst])
 
 
-def plot(g, stats):
+def plot(g, stats, filename):
     for label, stat in stats.items():
         if label == 'timestamps':
             continue
@@ -33,7 +39,7 @@ def plot(g, stats):
     plt.title('Metrics over time on compressed graph')
     plt.xlabel('Year')
     plt.ylabel('log10(Metric value)')
-    plt.savefig(filename[:-4] + '.png')
+    plt.savefig('./plots/' + filename + '.png')
     plt.show()
 
 
@@ -76,10 +82,14 @@ def calc_stats(g, take_log=True):
 
 
 if __name__ == '__main__':
+    if len(sys.argv) != 2:
+        usage(1)
+
     filename = sys.argv[1].strip()
+    prefix = filename.split('/')[-1].split('.')[0]
+    make_all_dirs(['plots'])
     with open(filename, 'rb') as f:
         g = pickle.load(f)
 
-
     stats = calc_stats(g)
-    plot(g, stats)
+    plot(g, stats, prefix)
