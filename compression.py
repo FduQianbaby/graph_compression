@@ -5,6 +5,7 @@ import networkx as nx
 import pickle
 import sys
 import os
+from numpy import random
 
 import matplotlib.pyplot as plt
 
@@ -37,11 +38,11 @@ def read_graph(filename):
 
 def lambda_connection(graph, source, target, lambda_=5):
     # RWR
-    if graph in PAGERANK_MEMO:
-        return PAGERANK_MEMO[graph][target]
+    #if graph in PAGERANK_MEMO:
+    #    return PAGERANK_MEMO[graph][target]
 
     weights = nx.pagerank(graph, personalization={source: 1})
-    PAGERANK_MEMO[graph] = weights
+    #PAGERANK_MEMO[graph] = weights
     return weights[target]
 
 
@@ -51,7 +52,7 @@ def lambda_distance(graph1, graph2):
     assert set(graph1.nodes) == set(graph2.nodes)
 
     total = 0
-    for s, t in zip(graph1.nodes, graph2.nodes):
+    for s, t in zip(random.permutation(graph1.nodes), graph2.nodes): # random pertumation???
         total += (lambda_connection(graph1, s, t) - lambda_connection(graph2, s, t))**2
 
     return math.sqrt(total)
@@ -132,33 +133,34 @@ def calc_cr(graph, compressed_graph):
     return compressed_graph.number_of_nodes() / graph.number_of_nodes()
 
 
-def all_two_hop_pairs(g):
+def two_hop_pairs(g, source):
     seen = set()
-    for source in g.nodes:
-        for intermediate in g.neighbors(source):
-            for target in g.neighbors(intermediate):
-                if source == target or (source, target) in seen:
-                    continue
-                seen.add((source, target))
-                yield source, target
+    for intermediate in g.neighbors(source):
+        for target in g.neighbors(intermediate):
+            if source == target or target in seen:
+                continue
+            seen.add(target)
+    return seen
 
 
-def brute_force_greedy(graph, cr=0.75):
+def brute_force_greedy(graph, cr=0.75, min_distance=0.5):
     compressed_graph = init_compressed_graph(graph)
-    while calc_cr(graph, compressed_graph) > cr:
-        print('  current cr: ', calc_cr(graph, compressed_graph))
-        min_source, min_target = -1, -1
-        min_distance = float('inf')
-        for i, (source, target) in enumerate(all_two_hop_pairs(compressed_graph)):
-            distance = lambda_distance(graph, decompress(compressed_graph))
+    nodes = random.permutation(compressed_graph.nodes)
+    tried = 0
+    for source in nodes:
+        if source not in compressed_graph.nodes:
+            continue
+        for target in two_hop_pairs(compressed_graph, source):
+            temp_graph = graph_merge(compressed_graph, source, target)
+            distance = lambda_distance(graph, decompress(temp_graph))
             if distance < min_distance:
-                min_source = source
-                min_target = target
-                min_distance = distance
-        if min_source == -1 and min_target == -1:
-            print('  nothing to compress')
-            return compressed_graph
-        compressed_graph = graph_merge(compressed_graph, min_source, min_target)
+                compressed_graph = temp_graph
+                if calc_cr(graph, compressed_graph) < cr:
+                    return compressed_graph
+                break
+            tried = tried + 1
+        if tried > 5000:
+            break
 
     return compressed_graph
 
@@ -177,11 +179,12 @@ if __name__ == '__main__':
         print('timestamp', timestamp)
         compressed = brute_force_greedy(graph)
         print('  final cr  : ', calc_cr(graph, compressed))
+        '''
         print('  nodes:')
         for node in compressed:
             print(node)
         print()
-
+        '''
         compressed_g[timestamp] = compressed
 
         prefix = filename.split('/')[-1].split('.')[0]
