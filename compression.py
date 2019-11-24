@@ -33,22 +33,21 @@ def make_all_dirs(dir_list):
 
 def read_graph(filename):
     g = {}
-    #g = defaultdict(lambda: nx.DiGraph())
+    changes = defaultdict(lambda: nx.DiGraph())
     current_graph = nx.DiGraph()
     previous_timestamp = -1
     with open(filename, 'r') as f:
         for line in f:
             # DBLP
-            #source, target, weight, timestamp = line.split()
+            source, target, weight, timestamp = line.split()
             # DARPA
-            timestamp, source, target, weight = line.split()
-            if timestamp != previous_timestamp and previous_timestamp != -1:
-                g[previous_timestamp] = current_graph.copy()
-            previous_timestamp = timestamp
-            current_graph.add_edge(source, target, weight=int(weight))
-            '''
-            g[timestamp].add_edge(source, target, weight=int(weight))
-            '''
+            #timestamp, source, target, weight = line.split()
+            changes[timestamp].add_edge(source, target, weight=int(weight))
+
+    # we don't want to store only added edges at each timestep, but the current graph snapshot
+    for timestamp, graph in changes.items():
+        current_graph.add_edges_from(graph.edges(data=True))
+        g[timestamp] = current_graph.copy()
 
     return g
 
@@ -73,7 +72,6 @@ def lambda_distance(graph1, graph2, source, target):
     total = 0
     for s, t in zip(random.permutation(source_nodes), random.permutation(target_nodes)): # random pertumation???
         total += (lambda_connection(graph1, s, t) - lambda_connection(graph2, s, t))**2
-    total /= (len(source_nodes)*len(target_nodes))
     return math.sqrt(total)
 
 
@@ -157,6 +155,7 @@ def two_hop_pairs(g, source):
     for intermediate in g.neighbors(source):
         if len([x for x in g.neighbors(intermediate)]) > 50:
             continue
+        seen.append(intermediate)
         for target in g.neighbors(intermediate):
             if source == target or target in seen:
                 continue
@@ -164,7 +163,7 @@ def two_hop_pairs(g, source):
     return seen
 
 
-def brute_force_greedy(graph, cr=0.75, min_distance=0.0001):
+def brute_force_greedy(graph, cr=0.75, min_distance=0.001):
     compressed_graph = init_compressed_graph(graph)
     nodes = random.permutation(compressed_graph.nodes)
     tried = 0
