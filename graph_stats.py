@@ -62,10 +62,12 @@ def calc_stats(g, take_log=True):
 
         # eigenvalues
         vals, vectors = numpy.linalg.eig(nx.convert_matrix.to_numpy_matrix(graph))
+        vectors = sorted(zip(vals,vectors.T), key=lambda x: x[0].real, reverse=True)
+        vector = vectors[0][1].T
         # pad eigenvectors with zeros, so we can compare
-        new_len = vectors[:,1].shape[0]
+        new_len = vector.shape[0]
         curr_len = last_eig.shape[0]
-        curr_eig = vectors[:,1]
+        curr_eig = vector
 
         curr_eig = pad_vector(curr_eig, curr_len - new_len) if curr_len > new_len else curr_eig
         last_eig = pad_vector(last_eig, new_len - curr_len) if new_len > curr_len else last_eig
@@ -73,7 +75,7 @@ def calc_stats(g, take_log=True):
         change_vec = numpy.subtract(curr_eig, last_eig)
         stats['L1 norm of first eigenvector'].append(L1norm(change_vec))
         stats['L2 norm of first eigenvector'].append(numpy.linalg.norm(change_vec))
-        last_eig = vectors[:, 1]
+        last_eig = vector
 
     if take_log:
         stats['number of edges'] = log(stats['number of edges'])
@@ -92,8 +94,11 @@ if __name__ == '__main__':
     filename = sys.argv[1].strip()
     prefix = filename.split('/')[-1].split('.')[0]
     make_all_dirs(['plots'])
-    with open(filename, 'rb') as f:
-        g = pickle.load(f)
+    if filename.endswith('.pkl'):
+        with open(filename, 'rb') as f:
+            g = pickle.load(f)
+    else:
+        read_graph(filename)
 
     stats = calc_stats(g)
     plot(g, stats, prefix)
