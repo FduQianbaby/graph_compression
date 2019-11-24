@@ -6,10 +6,14 @@ import networkx as nx
 import numpy
 import pickle
 import sys
-from compression import make_all_dirs
-
+import os
 
 STATS = ['number of edges', 'number of nodes', 'L1 norm of first eigenvector', 'L2 norm of first eigenvector']
+
+def make_all_dirs(dir_list):
+    for d in dir_list:
+        if not os.path.isdir('./' + d):
+            os.mkdir('./' + d)
 
 
 def usage(code):

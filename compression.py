@@ -7,10 +7,15 @@ import sys
 import os
 from numpy import random
 
+from sys import platform as sys_pf
+if sys_pf == 'darwin':
+    import matplotlib as plt
+    plt.use('TkAgg')
 import matplotlib.pyplot as plt
 
 from collections import defaultdict
 from itertools import combinations
+from graph_stats import calc_stats, plot
 
 PAGERANK_MEMO = {}
 
@@ -27,11 +32,23 @@ def make_all_dirs(dir_list):
 
 
 def read_graph(filename):
-    g = defaultdict(lambda: nx.DiGraph())
+    g = {}
+    #g = defaultdict(lambda: nx.DiGraph())
+    current_graph = nx.DiGraph()
+    previous_timestamp = -1
     with open(filename, 'r') as f:
         for line in f:
-            source, target, weight, timestamp = line.split()
+            # DBLP
+            #source, target, weight, timestamp = line.split()
+            # DARPA
+            timestamp, source, target, weight = line.split()
+            if timestamp != previous_timestamp and previous_timestamp != -1:
+                g[previous_timestamp] = current_graph.copy()
+            previous_timestamp = timestamp
+            current_graph.add_edge(source, target, weight=int(weight))
+            '''
             g[timestamp].add_edge(source, target, weight=int(weight))
+            '''
 
     return g
 
@@ -41,20 +58,22 @@ def lambda_connection(graph, source, target, lambda_=5):
     #if graph in PAGERANK_MEMO:
     #    return PAGERANK_MEMO[graph][target]
 
-    weights = nx.pagerank(graph, personalization={source: 1})
+    weights = nx.pagerank(graph, personalization={source: 1}, tol=1e-03)
     #PAGERANK_MEMO[graph] = weights
     return weights[target]
 
 
-def lambda_distance(graph1, graph2):
+def lambda_distance(graph1, graph2, source, target):
     # both graphs have to have the same vertex set
     # note: order in NodeView may be different
     assert set(graph1.nodes) == set(graph2.nodes)
 
+    source_nodes = two_hop_pairs(graph1, source)
+    target_nodes = two_hop_pairs(graph1, target)
     total = 0
-    for s, t in zip(random.permutation(graph1.nodes), graph2.nodes): # random pertumation???
+    for s, t in zip(random.permutation(source_nodes), random.permutation(target_nodes)): # random pertumation???
         total += (lambda_connection(graph1, s, t) - lambda_connection(graph2, s, t))**2
-
+    total /= (len(source_nodes)*len(target_nodes))
     return math.sqrt(total)
 
 
@@ -134,16 +153,18 @@ def calc_cr(graph, compressed_graph):
 
 
 def two_hop_pairs(g, source):
-    seen = set()
+    seen = list()
     for intermediate in g.neighbors(source):
+        if len([x for x in g.neighbors(intermediate)]) > 50:
+            continue
         for target in g.neighbors(intermediate):
             if source == target or target in seen:
                 continue
-            seen.add(target)
+            seen.append(target)
     return seen
 
 
-def brute_force_greedy(graph, cr=0.75, min_distance=0.5):
+def brute_force_greedy(graph, cr=0.75, min_distance=0.0001):
     compressed_graph = init_compressed_graph(graph)
     nodes = random.permutation(compressed_graph.nodes)
     tried = 0
@@ -152,7 +173,7 @@ def brute_force_greedy(graph, cr=0.75, min_distance=0.5):
             continue
         for target in two_hop_pairs(compressed_graph, source):
             temp_graph = graph_merge(compressed_graph, source, target)
-            distance = lambda_distance(graph, decompress(temp_graph))
+            distance = lambda_distance(graph, decompress(temp_graph), source ,target)
             if distance < min_distance:
                 compressed_graph = temp_graph
                 if calc_cr(graph, compressed_graph) < cr:
@@ -171,7 +192,7 @@ if __name__ == '__main__':
         usage(1)
 
     filename = sys.argv[1].strip()
-    make_all_dirs(['pkl_files'])
+    make_all_dirs(['pkl_files', 'plots'])
 
     compressed_g = {}
     g =  read_graph(filename)
@@ -190,3 +211,6 @@ if __name__ == '__main__':
         prefix = filename.split('/')[-1].split('.')[0]
         with open('./pkl_files/{}_compressed.pkl'.format(prefix), 'wb') as f:
             pickle.dump(compressed_g, f)
+    prefix = filename.split('/')[-1].split('.')[0]
+    stats = calc_stats(g)
+    plot(g, stats, prefix)
