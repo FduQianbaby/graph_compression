@@ -51,8 +51,11 @@ class TestCompression(unittest.TestCase):
                 f.write("{} {} {} {}".format(source, target, 1, 1) + "\n")
 
         g = compression.read_graph(filename)
+        current_graph = test_graph()
+        for s, t in test_graph_1().edges:
+            current_graph.add_edge(s, t)
         self.assertTrue(nx.is_isomorphic(g['0'], test_graph()))
-        self.assertTrue(nx.is_isomorphic(g['1'], test_graph_1()))
+        self.assertTrue(nx.is_isomorphic(g['1'], current_graph))
 
         os.remove(filename)
 
@@ -61,7 +64,7 @@ class TestCompression(unittest.TestCase):
         g = test_graph()
         source = 1
 
-        pr = nx.pagerank(g, personalization={source: 1})
+        pr = nx.pagerank(g, personalization={source: 1}, tol=1e-03)
 
         for node in g.nodes:
             self.assertEqual(pr[node], compression.lambda_connection(g, source, node))
@@ -69,8 +72,8 @@ class TestCompression(unittest.TestCase):
 
     def test_lambda_distance(self):
         g = test_graph()
-        self.assertEqual(compression.lambda_distance(g, g), 0)
-        # TODO: add other test
+        for s, t in g.edges:
+            self.assertEqual(compression.lambda_distance(g, g, s, t), 0)
 
 
     def test_decompress(self):
@@ -126,30 +129,18 @@ class TestCompression(unittest.TestCase):
         self.assertEqual(compression.calc_cr(g0, g1), len(g1.nodes)/len(g0.nodes))
 
 
-    def test_all_two_hop_pairs(self):
+    def test_two_hop_pairs(self):
         g = test_graph()
-        pairs = list(compression.all_two_hop_pairs(g))
+        nodes = list(compression.two_hop_pairs(g, '2'))
 
-        pairs_in = [('1', '3'), ('2', '4'), ('2', '5'), ('3', '5')]
-        pairs_out = [('1', '5'), ('1', '4'), ('3', '1')]
+        nodes_in = ['3', '4', '5']
+        nodes_out = ['1']
 
-        for pair in pairs_in:
-            self.assertTrue(pair in pairs)
+        for node in nodes_in:
+            self.assertTrue(node in nodes)
 
-        for pair in pairs_out:
-            self.assertFalse(pair in pairs)
-
-
-    def test_brute_force_greedy(self):
-        g = test_graph()
-        g1 = compression.brute_force_greedy(g, cr=0.75)
-        expected_nodes = ['1+3+2', '4', '5']
-        expected_edges = [('4', '5'), ('1+3+2', '1+3+2')]
-        for node in g1.nodes:
-            self.assertTrue(node in expected_nodes)
-
-        for edge in g1.edges:
-            self.assertTrue(edge in expected_edges)
+        for node in nodes_out:
+            self.assertFalse(node in nodes)
 
 
 if __name__ == '__main__':
