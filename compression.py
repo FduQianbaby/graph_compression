@@ -33,21 +33,22 @@ def make_all_dirs(dir_list):
 
 def read_graph(filename):
     g = {}
-    changes = defaultdict(lambda: nx.DiGraph())
+    changes = defaultdict(lambda: nx.MultiDiGraph())
     current_graph = nx.DiGraph()
     previous_timestamp = -1
     with open(filename, 'r') as f:
         for line in f:
             # DBLP
-            source, target, weight, timestamp = line.split()
+            source, target, weight, timestamp = line.strip().split()
             # DARPA
             #timestamp, source, target, weight = line.split()
             changes[timestamp].add_edge(source, target, weight=int(weight))
 
     # we don't want to store only added edges at each timestep, but the current graph snapshot
-    for timestamp, graph in changes.items():
+    for timestamp, graph in sorted(changes.items()):
         current_graph.add_edges_from(graph.edges(data=True))
         g[timestamp] = current_graph.copy()
+        print(timestamp, current_graph.number_of_nodes(), current_graph.number_of_edges())
 
     return g
 
@@ -67,10 +68,18 @@ def lambda_distance(graph1, graph2, source, target):
     # note: order in NodeView may be different
     assert set(graph1.nodes) == set(graph2.nodes)
 
-    source_nodes = two_hop_pairs(graph1, source)
-    target_nodes = two_hop_pairs(graph1, target)
+    source_nodes, target_nodes = [], []
+    for s in source.split('+'):
+        for node in two_hop_pairs(graph2, s):
+            source_nodes.append(node)
+    for t in target.split('+'):
+        for node in two_hop_pairs(graph2, t):
+            target_nodes.append(node)
+
+
     total = 0
     for s, t in zip(random.permutation(source_nodes), random.permutation(target_nodes)): # random pertumation???
+    #for s, t in zip(source_nodes, target_nodes): # random pertumation???
         total += (lambda_connection(graph1, s, t) - lambda_connection(graph2, s, t))**2
     return math.sqrt(total)
 
@@ -82,7 +91,8 @@ def decompress(compressed_graph):
     # recreate original node set in 'graph'
     node_to_supernode = {}
     for supernode in compressed_graph.nodes:
-        nodes = compressed_graph.nodes.data()[supernode]['contains']
+        #nodes = compressed_graph.nodes.data()[supernode]['contains']
+        nodes = supernode.split('+')
         graph.remove_node(supernode)
         for node in nodes:
             graph.add_node(node, contains=set([node]))
@@ -92,8 +102,8 @@ def decompress(compressed_graph):
     for source, target in compressed_graph.edges:
         contains = nx.get_node_attributes(compressed_graph, 'contains')
         superweight = compressed_graph[source][target]['weight']
-        for s in contains[source]:
-            for t in contains[target]:
+        for s in source.split('+'):
+            for t in target.split('+'):
                 graph.add_edge(s, t, weight=superweight)
 
     return graph
@@ -101,6 +111,9 @@ def decompress(compressed_graph):
 
 def is_edge(g, tup):
     return tup in g.edges
+
+def is_supernode_neighbor(supersrc, supertgt, s, t):
+    return s in (supersrc, supertgt) or t in (supersrc, supertgt)
 
 
 def graph_merge(graph, source, target):
@@ -119,17 +132,31 @@ def graph_merge(graph, source, target):
 
     # create new supernode, add to graph
     supernode = '{}+{}'.format(source, target)
-    supernode_contains = contains[source].union(contains[target])
+    supernode_contains = supernode.split('+')
+    contains[source] = source.split('+')
+    contains[target] = target.split('+')
     new_graph.add_node(supernode, contains=supernode_contains)
 
     # update weighted edges accordingly
-    for node in graph.nodes:
-        if node in (source, target) or not is_edge(graph, (source, node)) and not is_edge(graph, (node, target)):
+    for (u, v) in graph.edges:
+        if '{}+{}'.format(u, v) == supernode or '{}+{}'.format(v, u) == supernode:
             continue
-        num =  len(contains[source]) * lambda_connection(graph, source, node)
-        num += len(contains[target]) * lambda_connection(graph, target, node)
-        denom = len(contains[source]) + len(contains[target])
-        new_graph.add_edge(supernode, node, weight=num/denom)
+        if u == v:
+            continue
+        if source == v or target == v and (u, v) != (source, target):
+            node = v
+            num =  len(contains[source]) * lambda_connection(graph, source, node)
+            num += len(contains[target]) * lambda_connection(graph, target, node)
+            denom = len(contains[source]) + len(contains[target])
+            new_graph.add_edge(u, supernode, weight=num/denom)
+            print(supernode, u, v)
+
+        elif source == u or target == u and '{}+{}'.format(u, v) != supernode:
+            node = u
+            num =  len(contains[source]) * lambda_connection(graph, source, node)
+            num += len(contains[target]) * lambda_connection(graph, target, node)
+            denom = len(contains[source]) + len(contains[target])
+            new_graph.add_edge(supernode, v, weight=num/denom)
 
     # update w'({z, z})
     num = W(source, source) + W(target, target) + W(source, target)
@@ -151,35 +178,45 @@ def calc_cr(graph, compressed_graph):
 
 
 def two_hop_pairs(g, source):
-    seen = list()
+    assert source in g.nodes
+    seen = set()
     for intermediate in g.neighbors(source):
-        if len([x for x in g.neighbors(intermediate)]) > 50:
+        if source == intermediate or intermediate in seen:
             continue
-        seen.append(intermediate)
+        seen.add(intermediate)
+        yield intermediate
         for target in g.neighbors(intermediate):
             if source == target or target in seen:
                 continue
-            seen.append(target)
-    return seen
+            #seen.append(target)
+            yield target
+    #return seen
 
 
-def brute_force_greedy(graph, cr=0.75, min_distance=0.001):
+def brute_force_greedy(graph, cr=0.1, min_distance=0.5):
     compressed_graph = init_compressed_graph(graph)
-    nodes = random.permutation(compressed_graph.nodes)
-    tried = 0
-    for source in nodes:
-        if source not in compressed_graph.nodes:
-            continue
-        for target in two_hop_pairs(compressed_graph, source):
-            temp_graph = graph_merge(compressed_graph, source, target)
-            distance = lambda_distance(graph, decompress(temp_graph), source ,target)
-            if distance < min_distance:
-                compressed_graph = temp_graph
-                if calc_cr(graph, compressed_graph) < cr:
-                    return compressed_graph
-                break
-            tried = tried + 1
-        if tried > 5000:
+    for _ in range(50):
+        has_merged = False
+        for source in random.permutation(list(compressed_graph.nodes)):
+        #for source in compressed_graph.nodes:
+            if source not in compressed_graph.nodes:
+                continue
+            for target in two_hop_pairs(compressed_graph, source):
+                # check that the node hasn't already been merged on prev. iteration
+                if source not in compressed_graph.nodes or target not in compressed_graph.nodes:
+                    continue
+                if source == target:
+                    continue
+                temp_graph = graph_merge(compressed_graph, source, target)
+                distance = lambda_distance(graph, decompress(temp_graph), source, target)
+                print(source, target, distance)
+                if distance < min_distance:
+                    compressed_graph = temp_graph
+                    has_merged = True
+                    if calc_cr(graph, compressed_graph) < cr:
+                        return compressed_graph
+        if not has_merged:
+            print('Nothing left to merge')
             break
 
     return compressed_graph
