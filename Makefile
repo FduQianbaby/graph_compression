@@ -1,6 +1,6 @@
 demo:
 	@echo "Running demo..."
-	@compression.py data/test2.txt
+	@compression.py SpammerInjected.txt
 
 paper.pdf:
 	@echo "Making paper..."
@@ -17,10 +17,10 @@ clean:
 
 spotless: 
 	@echo "Making spotless..."
-	@\rm -f paper.tex  all.tar all.tar.gz
+	@\rm  all.tar all.tar.gz
 
 all.tar:
-	@tar cvf all.tar compression.py graph_stats.py DOC Makefile README.md
+	@tar cvf all.tar SpammerInjected.txt test.py compression.py graph_stats.py DOC Makefile README.md
 
 all.tar.gz: all.tar
 	@echo "Making tarfile..."
