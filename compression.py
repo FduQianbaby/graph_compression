@@ -48,7 +48,6 @@ def read_graph(filename):
     for timestamp, graph in sorted(changes.items()):
         current_graph.add_edges_from(graph.edges(data=True))
         g[timestamp] = current_graph.copy()
-        print(timestamp, current_graph.number_of_nodes(), current_graph.number_of_edges())
 
     return g
 
@@ -195,7 +194,7 @@ def two_hop_pairs(g, source):
 
 def brute_force_greedy(graph, cr=0.1, min_distance=0.5):
     compressed_graph = init_compressed_graph(graph)
-    for _ in range(50):
+    for _ in range(10):
         has_merged = False
         for source in random.permutation(list(compressed_graph.nodes)):
         #for source in compressed_graph.nodes:
